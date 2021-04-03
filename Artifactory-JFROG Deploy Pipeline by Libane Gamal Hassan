@@ -1,0 +1,62 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Clean'){
+            steps{
+                cleanWs()
+            }
+        }
+
+        stage('Source') {
+            steps{
+                git(
+                        url: 'https://gitlab.com/project_devops/isihelp',
+                        credentialsId: 'ISIS_HELP_CREDENTIALS',
+                        branch: 'libane_Gamal_hassan_donne_vote'
+                    )
+            }
+        }
+
+        stage('Artifactory configuration') {
+            def server = Artifactory.server JFROG
+            def buildInfo = Artifactory.newBuildInfo()
+            buildInfo.env.capture = true
+            def rtMaven = Artifactory.newMavenBuild()
+            //rtMaven.tool = "Maven-3.3.9" // Tool name from Jenkins configuration
+            rtMaven.opts = "-Denv=dev"
+            rtMaven.deployer releaseRepo:'isi-help-local-repository', snapshotRepo:'isi-help-local-repository', server: server
+            rtMaven.resolver releaseRepo:'isi-help-local-repository', snapshotRepo:'isi-help-local-repository', server: server
+
+            rtMaven.run pom: 'pom.xml', goals: 'clean install', buildInfo: buildInfo
+
+            buildInfo.retention maxBuilds: 10, maxDays: 7, deleteBuildArtifacts: true
+              // Publish build info.
+            server.publishBuildInfo buildInfo
+        }
+
+        stage ('Deploy') {
+            rtMaven.deployer.deployArtifacts buildInfo
+        }
+
+
+        stage ('Publish build info') {
+            server.publishBuildInfo buildInfo
+        }
+
+        stage('Test Unitaire'){
+            steps{
+                bat 'mvn test'
+            }
+        }
+
+        stage('Test Sonar'){
+            steps{
+                bat 'mvn sonar:sonar'
+            }
+        }
+
+    }
+
+}
